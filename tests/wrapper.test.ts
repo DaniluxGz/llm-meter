@@ -1,35 +1,62 @@
 import { describe, it, expect, vi } from 'vitest'
-import { meter } from '../src/index'
+import { createWrapper } from '../src/wrapper'
+import type OpenAI from 'openai'
 
-// Minimal mock that mirrors the OpenAI client shape we use
-const mockCreate = vi.fn().mockResolvedValue({
-    id: 'chatcmpl-test',
-    model: 'gpt-4o-mini',
-    choices: [{ message: { content: 'hello' } }],
-    usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-})
+const mockResponse = {
+    model: 'gpt-4o',
+    choices: [{ message: { content: 'Hello' } }],
+    usage: { prompt_tokens: 100, completion_tokens: 50 },
+}
 
-const mockClient = {
-    chat: {
-        completions: {
-            create: mockCreate,
+function makeMockClient() {
+    return {
+        chat: {
+            completions: {
+                create: vi.fn().mockResolvedValue(mockResponse),
+            },
         },
-    },
-} as any
+    } as unknown as OpenAI
+}
 
-describe('meter wrapper', () => {
+describe('createWrapper', () => {
     it('returns an object with chat.completions.create', () => {
-        const wrapped = meter(mockClient)
-        expect(wrapped.chat.completions.create).toBeDefined()
+        const client = makeMockClient()
+        const wrapped = createWrapper(client)
+        expect(typeof wrapped.chat.completions.create).toBe('function')
     })
 
-    it('proxies create() and returns the same response', async () => {
-        const wrapped = meter(mockClient)
+    it('returns the same response as the original', async () => {
+        const client = makeMockClient()
+        const wrapped = createWrapper(client)
         const result = await wrapped.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4o',
             messages: [{ role: 'user', content: 'hi' }],
-        } as any)
-        expect(result.usage?.prompt_tokens).toBe(10)
-        expect(result.choices[0].message.content).toBe('hello')
+        }) as any
+        expect(result.choices[0].message.content).toBe('Hello')
     })
+
+    it('attaches __meter metadata to the response', async () => {
+        const client = makeMockClient()
+        const wrapped = createWrapper(client)
+        const result = await wrapped.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'hi' }],
+        }) as any
+        expect(result.__meter).toBeDefined()
+        expect(result.__meter.inputTokens).toBe(100)
+        expect(result.__meter.outputTokens).toBe(50)
+        expect(result.__meter.usd).toBeGreaterThanOrEqual(0)
+    })
+    it('logs to stdout after a completion', async () => {
+        const log = vi.spyOn(console, 'log').mockImplementation(() => { })
+        const client = makeMockClient()
+        const wrapped = createWrapper(client)
+        await wrapped.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: 'hi' }],
+        })
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('[llm-meter]'))
+        log.mockRestore()
+    })
+
 })
