@@ -5,6 +5,7 @@ export interface MeterData {
     usd: number
     latencyMs: number
     unknown?: boolean
+    error?: unknown
 }
 
 export type Exporter = (data: MeterData) => void

@@ -46,7 +46,14 @@ async function interceptCompletion(
 
     // Non-streaming path
     const start = Date.now()
-    const response = await (original as (p: CreateParams) => Promise<CompletionResponse>)(params)
+    let response: CompletionResponse
+    try {
+        response = await (original as (p: CreateParams) => Promise<CompletionResponse>)(params)
+    } catch (error) {
+        const latencyMs = Date.now() - start
+        emit?.({ model: params.model, inputTokens: 0, outputTokens: 0, usd: 0, latencyMs, error })
+        throw error
+    }
     const latencyMs = Date.now() - start
 
     const model = response.model ?? params.model

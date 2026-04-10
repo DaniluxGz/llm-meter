@@ -78,3 +78,17 @@ describe('createWrapper', () => {
         log.mockRestore()
     })
 })
+
+it('emits metric and re-throws on error', async () => {
+    const onMetric = vi.fn()
+    const client = makeMockClient()
+        ; (client.chat.completions.create as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('API failure'))
+    const wrapped = createWrapper(client, { onMetric })
+    await expect(
+        wrapped.chat.completions.create({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] })
+    ).rejects.toThrow('API failure')
+    expect(onMetric).toHaveBeenCalledOnce()
+    const data = onMetric.mock.calls[0][0]
+    expect(data.error).toBeInstanceOf(Error)
+    expect(data.usd).toBe(0)
+})
