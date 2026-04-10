@@ -1,4 +1,4 @@
-// Price per token in USD (not per 1k/1M — raw per-token for direct multiplication)
+// Price per token in USD (raw per-token, not per 1k/1M)
 const PRICES: Record<string, { input: number; output: number }> = {
     'gpt-4o': { input: 0.000005, output: 0.000015 },
     'gpt-4o-mini': { input: 0.00000015, output: 0.0000006 },
@@ -12,21 +12,20 @@ export interface CostResult {
     usd: number
     inputTokens: number
     outputTokens: number
+    unknown?: boolean
 }
 
-// src/pricing.ts — update calculateCost()
 export function calculateCost(
     model: string,
     inputTokens: number,
     outputTokens: number
 ): CostResult {
-    // Strip date suffix added by some providers (e.g. "-20230311")
-    const normalizedModel = model.replace(/-\d{8}(:[a-z]+)?$/, (_, tag) => tag ?? '')
-    const price = PRICES[normalizedModel] ?? PRICES[model]
+    // Strip date suffix: e.g. "gpt-4o-2024-11-20" → "gpt-4o"
+    const normalized = model.replace(/-\d{4}-\d{2}-\d{2}(:[a-z]+)?$/, (_, tag) => tag ?? '')
+    const price = PRICES[normalized] ?? PRICES[model]
 
     if (!price) {
-        console.warn(`[llm-meter] Unknown model "${model}" — cost reported as $0.00`)
-        return { usd: 0, inputTokens, outputTokens }
+        return { usd: 0, inputTokens, outputTokens, unknown: true }
     }
 
     const usd = inputTokens * price.input + outputTokens * price.output

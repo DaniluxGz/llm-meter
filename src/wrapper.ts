@@ -1,26 +1,33 @@
 import type OpenAI from 'openai'
+import type { MeterOptions } from './types'
 import { calculateCost } from './pricing'
 import { logToStdout } from './exporters/stdout'
 
-type CreateParams = Parameters<OpenAI['chat']['completions']['create']>[0]
+type CreateFn = OpenAI['chat']['completions']['create']
+type CreateParams = Parameters<CreateFn>[0]
+type CompletionResponse = OpenAI.Chat.Completions.ChatCompletion
+type StreamChunk = OpenAI.Chat.Completions.ChatCompletionChunk
 
 async function interceptCompletion(
-    original: Function,
-    params: CreateParams
-): Promise<any> {
-    // Handle streaming
-    if ((params as any).stream === true) {
+    original: CreateFn,
+    params: CreateParams,
+    options: MeterOptions
+): Promise<CompletionResponse | AsyncGenerator<StreamChunk>> {
+    const emit = options.silent
+        ? undefined
+        : (options.onMetric ?? logToStdout)
+
+    // Streaming path
+    if (params.stream === true) {
         const start = Date.now()
-        const stream = await original(params)
+        const stream = await (original as (p: CreateParams) => Promise<AsyncIterable<StreamChunk>>)(params)
 
         let inputTokens = 0
         let outputTokens = 0
-        let model = (params as any).model
+        let model = params.model
 
-        // Return an async generator that passes chunks through and captures usage
-        async function* wrappedStream() {
+        async function* wrappedStream(): AsyncGenerator<StreamChunk> {
             for await (const chunk of stream) {
-                // Some providers send usage in the last chunk
                 if (chunk.usage) {
                     inputTokens = chunk.usage.prompt_tokens ?? 0
                     outputTokens = chunk.usage.completion_tokens ?? 0
@@ -30,35 +37,33 @@ async function interceptCompletion(
             }
 
             const latencyMs = Date.now() - start
-            const { usd } = calculateCost(model, inputTokens, outputTokens)
-            logToStdout({ model, inputTokens, outputTokens, usd, latencyMs })
+            const { usd, unknown } = calculateCost(model, inputTokens, outputTokens)
+            emit?.({ model, inputTokens, outputTokens, usd, latencyMs, unknown })
         }
 
         return wrappedStream()
     }
 
-    // Handle non-streaming (existing logic)
+    // Non-streaming path
     const start = Date.now()
-    const response = await original(params) as OpenAI.Chat.Completions.ChatCompletion
+    const response = await (original as (p: CreateParams) => Promise<CompletionResponse>)(params)
     const latencyMs = Date.now() - start
 
-    const model = response.model ?? (params as any).model
+    const model = response.model ?? params.model
     const inputTokens = response.usage?.prompt_tokens ?? 0
     const outputTokens = response.usage?.completion_tokens ?? 0
-    const { usd } = calculateCost(model, inputTokens, outputTokens)
+    const { usd, unknown } = calculateCost(model, inputTokens, outputTokens)
 
-        ; (response as any).__meter = { model, inputTokens, outputTokens, usd, latencyMs }
-    logToStdout({ model, inputTokens, outputTokens, usd, latencyMs })
+    emit?.({ model, inputTokens, outputTokens, usd, latencyMs, unknown })
 
     return response
 }
 
-export function createWrapper(client: OpenAI): OpenAI {
-    const originalCreate = client.chat.completions.create.bind(client.chat.completions)
+export function createWrapper(client: OpenAI, options: MeterOptions): OpenAI {
+    const originalCreate = client.chat.completions.create.bind(client.chat.completions) as CreateFn
 
-        ; (client.chat.completions as any).create = async (params: CreateParams) => {
-            return interceptCompletion(originalCreate as any, params)
-        }
+        ; (client.chat.completions as { create: unknown }).create = (params: CreateParams) =>
+            interceptCompletion(originalCreate, params, options)
 
     return client
 }
