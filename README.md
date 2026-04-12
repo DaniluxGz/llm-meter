@@ -5,7 +5,7 @@ Zero-config cost and latency tracker for OpenAI-compatible API calls.
 ## Installation
 
 ```bash
-npm install llm-meter
+npm install github:DaniluxGz/llm-meter
 ```
 
 Requires `openai` as a peer dependency:
