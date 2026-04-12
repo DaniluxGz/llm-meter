@@ -1,96 +1,102 @@
 # llm-meter
 
-Add two lines to your OpenAI-compatible code. Get tokens, cost, and latency logged automatically.
+Zero-config cost and latency tracker for OpenAI-compatible API calls.
 
-```ts
-// Before
-const client = new OpenAI({ apiKey: '...' })
+> [!NOTE]
+> `llm-meter` acts as a transparent wrapper around your standard OpenAI client. It automatically intercepts requests to calculate exact token usage, cost in USD, and latency, logging it directly to your console without requiring architectural changes.
 
-// After
-const client = await meter(new OpenAI({ apiKey: '...' }))
-```
-[llm-meter] gpt-4o-mini | in: 120 | out: 43 | $0.000044 | 0.84s
+## Features
 
-No other changes needed.
+- **Zero friction**: Two lines of code to integrate with your existing OpenAI client.
+- **Cost & Latency Tracking**: Real-time logging of your request metrics.
+- **Streaming support**: Seamlessly intercepts chunks to accurately report usage at the end of the stream.
+- **Multi-provider compatibility**: Built for OpenAI, OpenRouter (with dynamic pricing), Groq, Together AI, Perplexity, and Azure OpenAI.
 
----
+## Getting Started
 
-## Install
+### Prerequisites
+
+- Node.js >= 18
+- An existing project using the `openai` SDK (`>=4.0.0`)
+
+### Installation
+
+Install the package directly from GitHub:
 
 ```bash
-npm install llm-meter
+npm install github:DaniluxGz/llm-meter
 ```
 
----
+## Quickstart
 
-## Usage
+Wrap your existing OpenAI client with the `meter` function.
 
-```ts
-import OpenAI from 'openai'
-import { meter } from 'llm-meter'
+```typescript
+import OpenAI from 'openai';
+import { meter } from 'llm-meter';
 
-const client = await meter(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }))
+// 1. Initialize your base client 
+const baseClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// 2. Wrap it with `meter`
+const client = await meter(baseClient);
+
+// 3. Send requests as usual!
 const res = await client.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: 'Hello!' }],
-})
+});
 ```
 
-Streaming works the same way — no extra setup.
+A transparent log will securely output the cost breakdown to stdout:
+```text
+[llm-meter] gpt-4o-mini | in: 120 | out: 43 | $0.000044 | 0.84s
+```
 
----
+> [!TIP]
+> Streaming is fully supported natively! Use `stream: true` and `stream_options: { include_usage: true }` in your standard requests and it will track tokens out of the box.
 
-## Works with any OpenAI-compatible API
+## Advanced Usage
 
-| Provider     | baseURL                              |
-|-------------|---------------------------------------|
-| OpenAI      | *(none)*                              |
-| OpenRouter  | `https://openrouter.ai/api/v1`        |
-| Groq        | `https://api.groq.com/openai/v1`      |
-| Together AI | `https://api.together.xyz/v1`         |
-| Perplexity  | `https://api.perplexity.ai`           |
+### OpenRouter & Dynamic Pricing
 
----
+You can enable dynamic pricing to automatically fetch the live cost table directly from OpenRouter, ensuring accurate `$USD` calculation for hundreds of models.
 
-## Pricing
-
-By default, llm-meter uses a local table with the main OpenAI models.
-
-For OpenRouter, enable dynamic pricing to get real prices for all models:
-
-```ts
-const client = await meter(new OpenAI({ ... }), {
+```typescript
+const client = await meter(new OpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY,
+}), {
     dynamicPricing: { openrouter: true }
-})
+});
 ```
 
-This fetches live prices from OpenRouter on init. If the fetch fails, falls back to the local table.
+> [!TIP]
+> This configuration guarantees that `llm-meter` will recognize OpenRouter models (`nvidia/nemotron-...`, `anthropic/...`, etc.) and log their precise costs instantly.
 
-If a model has no price, cost logs as `$0.00 [unknown model]` — tokens and latency still work.
+### Custom Exporters and Options
 
----
+`llm-meter` can be configured easily. If you do not want stdout logs and prefer a custom metric collector (like Datadog or a database), pass `MeterOptions`: 
 
-## Options
-
-```ts
+```typescript
 meter(client, {
-    silent: true,                          // disable logging
-    onMetric: (data) => myLogger(data),    // custom exporter
-    dynamicPricing: { openrouter: true },  // fetch live prices
-})
+    silent: true, // Disable standard stdout logging
+    onMetric: (data) => {
+        // Your custom metric pipeline
+        myCustomLogger(data.model, data.usd, data.latencyMs);
+    }
+});
 ```
 
-### `MeterData` shape
-
-```ts
+The underlying payload (`MeterData`) looks like this:
+```typescript
 {
-    model: string
-    inputTokens: number
-    outputTokens: number
-    usd: number
-    latencyMs: number
-    unknown?: boolean   // true if model price not found
-    error?: unknown     // set if the request failed
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    usd: number;
+    latencyMs: number;
+    unknown?: boolean; // true if model price was not found in active tables
+    error?: unknown;   // set if the API request failed
 }
 ```
