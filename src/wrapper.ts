@@ -27,13 +27,19 @@ async function interceptCompletion(
         let model = params.model
 
         async function* wrappedStream(): AsyncGenerator<StreamChunk> {
-            for await (const chunk of stream) {
-                if (chunk.usage) {
-                    inputTokens = chunk.usage.prompt_tokens ?? 0
-                    outputTokens = chunk.usage.completion_tokens ?? 0
+            try {
+                for await (const chunk of stream) {
+                    if (chunk.usage) {
+                        inputTokens = chunk.usage.prompt_tokens ?? 0
+                        outputTokens = chunk.usage.completion_tokens ?? 0
+                    }
+                    if (chunk.model) model = chunk.model
+                    yield chunk
                 }
-                if (chunk.model) model = chunk.model
-                yield chunk
+            } catch (error) {
+                const latencyMs = Date.now() - start
+                emit?.({ model, inputTokens, outputTokens, usd: 0, latencyMs, error })
+                throw error
             }
 
             const latencyMs = Date.now() - start
