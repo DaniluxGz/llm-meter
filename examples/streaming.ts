@@ -1,4 +1,3 @@
-// examples/streaming.ts
 import OpenAI from 'openai'
 import { config } from 'dotenv'
 import { meter } from '../src/index'
@@ -6,18 +5,17 @@ import { meter } from '../src/index'
 config()
 
 async function main() {
-    const client = new OpenAI({
+    const client = await meter(new OpenAI({
         baseURL: 'https://openrouter.ai/api/v1',
         apiKey: process.env.OPENROUTER_API_KEY,
+    }), {
+        dynamicPricing: { openrouter: true }
     })
 
-    const wrapped = meter(client)
-
-    const stream = await wrapped.chat.completions.create({
+    const stream = await client.chat.completions.create({
         model: 'nvidia/nemotron-3-super-120b-a12b:free',
         messages: [{ role: 'user', content: 'Count from 1 to 5.' }],
         stream: true,
-        // Request usage in last chunk (OpenAI-compatible providers support this)
         stream_options: { include_usage: true },
     } as any)
 

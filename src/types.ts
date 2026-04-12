@@ -14,4 +14,7 @@ export interface MeterOptions {
     onMetric?: Exporter
     silent?: boolean
     tags?: Record<string, string>
+    dynamicPricing?: {
+        openrouter?: boolean
+    }
 }

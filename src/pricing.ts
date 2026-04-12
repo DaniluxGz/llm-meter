@@ -1,5 +1,5 @@
 // Price per token in USD (raw per-token, not per 1k/1M)
-type PriceMap = Record<string, { input: number; output: number }>
+export type PriceMap = Record<string, { input: number; output: number }>
 
 const OPENAI: PriceMap = {
     'gpt-4o': { input: 0.000005, output: 0.000015 },
@@ -17,12 +17,13 @@ const OPENAI: PriceMap = {
     'o4-mini': { input: 0.0000011, output: 0.0000044 },
 }
 
-const OPENROUTER: PriceMap = {
-    'nvidia/nemotron-3-super-120b-a12b:free': { input: 0, output: 0 },
-    'meta-llama/llama-3-8b-instruct:free': { input: 0, output: 0 },
-}
+// Runtime price table — starts with local, can be extended dynamically
+let PRICES: PriceMap = { ...OPENAI }
 
-const PRICES: PriceMap = { ...OPENAI, ...OPENROUTER }
+// Merge external prices into the runtime table (dynamic prices win over local)
+export function extendPrices(external: PriceMap): void {
+    PRICES = { ...PRICES, ...external }
+}
 
 export interface CostResult {
     usd: number
