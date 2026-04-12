@@ -1,9 +1,13 @@
 {
   "name": "llm-meter",
   "version": "0.1.0",
-  "description": "Zero-config cost and latency tracker for OpenAI API calls",
-  "author": "TU_NOMBRE",
+  "description": "Zero-config cost and latency tracker for OpenAI-compatible API calls",
+  "author": "DaniluxGz",
   "license": "MIT",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
